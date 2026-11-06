@@ -1,7 +1,44 @@
+# Compilación
 build/
-.vscode/
-.idea/
-.DS_Store
+bin/
+Intermediate/
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.dylib
+*.so
+*.exp
+*.pdb
+*.ilk
+*.exe
+
+# Formatos de plugin generados
 *.vst3
 *.component
 *.aaxplugin
+
+# IDEs y editores
+.vscode/
+.idea/
+.vs/
+*.user
+*.suo
+*.sln
+*.xcodeproj/
+*.xcworkspace/
+
+# Sistema operativo y temporales
+.DS_Store
+Thumbs.db
+CMakeSettings.json
+CMakeCache.txt
+CMakeFiles/
+
+# Certificados y credenciales de firma (nunca al repositorio)
+*.p12
+*.cer
+*.key
+*.env
+codesign/
