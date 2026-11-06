@@ -38,6 +38,8 @@ target_sources(FartovenDrums PRIVATE
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/DrumChannelDSP.h
+    Source/DrumChannel.h
+    Source/DrumChannel.cpp
 )
 
 target_link_libraries(FartovenDrums PRIVATE
@@ -57,6 +59,7 @@ juce_add_console_app(FartovenDrumsTests PRODUCT_NAME "FARTOVEN DRUMS Tests")
 target_sources(FartovenDrumsTests PRIVATE
     Tests/main.cpp
     Tests/DSPTests.cpp
+    Source/DrumChannel.cpp
 )
 
 target_link_libraries(FartovenDrumsTests PRIVATE

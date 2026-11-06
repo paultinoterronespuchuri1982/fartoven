@@ -8,12 +8,12 @@
  */
 namespace FartovenStyle
 {
-    const juce::Colour background { 0xff101214 };
-    const juce::Colour panel      { 0xff16181b };
-    const juce::Colour panelEdge  { 0xff26292e };
-    const juce::Colour accent     { 0xfff59e0b };
-    const juce::Colour textMain   { 0xffd8dbe0 };
-    const juce::Colour textDim    { 0xff7d838c };
+    const juce::Colour background { 0xff0b0d10 };
+    const juce::Colour panel      { 0xff14171c };
+    const juce::Colour panelEdge  { 0xff20242b };
+    const juce::Colour accent     { 0xff2dd4bf }; // turquesa
+    const juce::Colour textMain   { 0xffe6e8ec };
+    const juce::Colour textDim    { 0xff6b7280 };
 }
 
 /** Perillas con arco de color y aguja. */
@@ -65,7 +65,7 @@ private:
     float displayed = 0.0f;
 };
 
-class FartovenEditor : public juce::AudioProcessorEditor
+class FartovenEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     explicit FartovenEditor (FartovenProcessor&);
@@ -97,6 +97,16 @@ private:
 
     juce::Rectangle<int> blockToneArea, blockTightArea, blockBodyArea, blockCharacterArea;
     juce::Rectangle<int> satTypeLabelArea;
+
+    // Canal del instrumento seleccionado: Low, Mid, High y Gain se reasignan al cambiar de instrumento
+    juce::Slider channelGain;
+    std::array<std::unique_ptr<SliderAttachment>, 4> channelAttachments;
+    juce::RangedAudioParameter* selectedParam = nullptr;
+    int boundInstrument = -1;
+    juce::String channelTitle { "CANAL" };
+
+    void timerCallback() override;
+    void bindInstrument (int index);
 
     /** Cada perilla con la zona donde se dibuja su etiqueta. Se rehace en resized(). */
     std::vector<std::pair<juce::Slider*, juce::Rectangle<int>>> knobLabels;

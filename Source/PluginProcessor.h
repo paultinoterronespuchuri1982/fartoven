@@ -3,7 +3,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_dsp/juce_dsp.h>
 
+#include <array>
+
 #include "DrumChannelDSP.h"
+#include "DrumChannel.h"
 
 /**
  * Procesador de FARTOVEN DRUMS. Conecta el árbol de parámetros (APVTS) con el motor
@@ -50,8 +53,18 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     DrumChannelDSP::Settings readSettings() const;
+    DrumChannel::Params readVoiceParams (int index) const;
+
+    /** Identificadores de parámetros de cada voz, construidos una vez para no reservar memoria en processBlock. */
+    struct VoiceIds { juce::String gain, drive, sat, filter, low, mid, high; };
+    static constexpr int numVoices = 5;
+    std::array<VoiceIds, numVoices> voiceIds;
 
     DrumChannelDSP channelDSP;
+
+    // Voces: cada una procesa la entrada y suma su resultado en voiceSum
+    std::array<DrumChannel, numVoices> voices;
+    juce::AudioBuffer<float> voiceSum;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FartovenProcessor)
 };

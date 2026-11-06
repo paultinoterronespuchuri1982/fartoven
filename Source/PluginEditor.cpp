@@ -33,8 +33,9 @@ void FartovenLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     const auto radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const auto centre = bounds.getCentre();
     const auto angle  = startAngle + sliderPos * (endAngle - startAngle);
-    const juce::PathStrokeType stroke (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    const juce::PathStrokeType stroke (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
 
+    // Pista de fondo y arco de valor, con extremos redondeados
     juce::Path track;
     track.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, endAngle, true);
     g.setColour (FartovenStyle::panelEdge);
@@ -45,15 +46,14 @@ void FartovenLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int
     g.setColour (FartovenStyle::accent);
     g.strokePath (valueArc, stroke);
 
-    g.setColour (FartovenStyle::panel);
-    g.fillEllipse (centre.x - radius * 0.68f, centre.y - radius * 0.68f, radius * 1.36f, radius * 1.36f);
+    // Cuerpo de la perilla: disco plano con un punto indicador
+    g.setColour (FartovenStyle::panelEdge);
+    g.fillEllipse (centre.x - radius * 0.62f, centre.y - radius * 0.62f, radius * 1.24f, radius * 1.24f);
 
-    const juce::Line<float> pointer (centre.x + radius * 0.25f * std::sin (angle),
-                                     centre.y - radius * 0.25f * std::cos (angle),
-                                     centre.x + radius * 0.65f * std::sin (angle),
-                                     centre.y - radius * 0.65f * std::cos (angle));
+    const float dotX = centre.x + radius * 0.48f * std::sin (angle);
+    const float dotY = centre.y - radius * 0.48f * std::cos (angle);
     g.setColour (FartovenStyle::textMain);
-    g.drawLine (pointer, 2.0f);
+    g.fillEllipse (dotX - 2.5f, dotY - 2.5f, 5.0f, 5.0f);
 }
 
 void FartovenLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
@@ -93,10 +93,14 @@ void ModeSelector::paint (juce::Graphics& g)
         const bool active = (i == selected);
         const auto cell = cells.getReference (i);
 
-        g.setColour (active ? FartovenStyle::accent.withAlpha (0.14f) : FartovenStyle::panel);
-        g.fillRoundedRectangle (cell, 6.0f);
-        g.setColour (active ? FartovenStyle::accent : FartovenStyle::panelEdge);
-        g.drawRoundedRectangle (cell.reduced (0.5f), 6.0f, active ? 1.5f : 1.0f);
+        g.setColour (active ? FartovenStyle::panelEdge : FartovenStyle::panel);
+        g.fillRoundedRectangle (cell, 10.0f);
+        if (active)
+        {
+            // Acento inferior en lugar de borde: menos ruido visual
+            g.setColour (FartovenStyle::accent);
+            g.fillRoundedRectangle (cell.getX() + 16.0f, cell.getBottom() - 4.0f, cell.getWidth() - 32.0f, 3.0f, 1.5f);
+        }
 
         auto iconArea = cell.withTrimmedBottom (26.0f).reduced (8.0f);
         g.setColour (active ? FartovenStyle::accent : FartovenStyle::textDim);
@@ -205,7 +209,7 @@ void PeakMeter::paint (juce::Graphics& g)
 FartovenEditor::FartovenEditor (FartovenProcessor& p)
     : AudioProcessorEditor (&p),
       processor (p),
-      modeSelector (*p.apvts.getParameter ("mode")),
+      modeSelector (*p.apvts.getParameter ("selectedInstrument")),
       meter (p.outputPeak)
 {
     setLookAndFeel (&lookAndFeel);
@@ -214,9 +218,11 @@ FartovenEditor::FartovenEditor (FartovenProcessor& p)
     addAndMakeVisible (modeSelector);
     addAndMakeVisible (meter);
 
-    addSlider (low,       "low",       "Low");
-    addSlider (mid,       "mid",       "Mid");
-    addSlider (high,      "high",      "High");
+    // Low, Mid, High y Gain no tienen attachment fijo: se enlazan al canal activo en bindInstrument()
+    addSlider (low,        nullptr, "Low");
+    addSlider (mid,        nullptr, "Mid");
+    addSlider (high,       nullptr, "High");
+    addSlider (channelGain, nullptr, "Gain");
     addSlider (tight,     "tight",     "Tight");
     addSlider (smooth,    "smooth",    "Smooth");
     addSlider (punch,     "punch",     "Punch");
@@ -240,6 +246,41 @@ FartovenEditor::FartovenEditor (FartovenProcessor& p)
     bypass.setLookAndFeel (&lookAndFeel);
     addAndMakeVisible (bypass);
     bypassAttachment = std::make_unique<ButtonAttachment> (p.apvts, "bypass", bypass);
+
+    selectedParam = p.apvts.getParameter ("selectedInstrument");
+    bindInstrument (0);
+    startTimerHz (30);
+}
+
+void FartovenEditor::timerCallback()
+{
+    // Sigue el selector de instrumento (puede cambiar desde el DAW)
+    if (selectedParam == nullptr)
+        return;
+
+    const int index = juce::jlimit (0, 4, juce::roundToInt (selectedParam->getValue() * 4.0f));
+    if (index != boundInstrument)
+        bindInstrument (index);
+}
+
+void FartovenEditor::bindInstrument (int index)
+{
+    // Prefijos de los parámetros de cada canal, en el mismo orden que el selector
+    static const char* const prefixes[] = { "kick", "snare", "toms", "cymbals", "room" };
+    static const char* const titles[]   = { "CANAL · KICK", "CANAL · SNARE", "CANAL · TOMS",
+                                            "CANAL · CYMBALS", "CANAL · ROOM" };
+
+    boundInstrument = index;
+    const juce::String prefix (prefixes[index]);
+
+    // Reasigna los attachments: cada perilla queda ligada solo al canal activo
+    channelAttachments[0] = std::make_unique<SliderAttachment> (processor.apvts, prefix + "Low",  low);
+    channelAttachments[1] = std::make_unique<SliderAttachment> (processor.apvts, prefix + "Mid",  mid);
+    channelAttachments[2] = std::make_unique<SliderAttachment> (processor.apvts, prefix + "High", high);
+    channelAttachments[3] = std::make_unique<SliderAttachment> (processor.apvts, prefix + "Gain", channelGain);
+
+    channelTitle = titles[index];
+    repaint();
 }
 
 FartovenEditor::~FartovenEditor()
@@ -258,7 +299,8 @@ void FartovenEditor::addSlider (juce::Slider& s, const char* paramId, const juce
     s.setColour (juce::Slider::textBoxOutlineColourId, FartovenStyle::panelEdge);
     s.setName (caption);
     addAndMakeVisible (s);
-    sliderAttachments.push_back (std::make_unique<SliderAttachment> (processor.apvts, paramId, s));
+    if (paramId != nullptr)
+        sliderAttachments.push_back (std::make_unique<SliderAttachment> (processor.apvts, paramId, s));
 }
 
 void FartovenEditor::paint (juce::Graphics& g)
@@ -266,10 +308,14 @@ void FartovenEditor::paint (juce::Graphics& g)
     g.fillAll (FartovenStyle::background);
 
     g.setColour (FartovenStyle::textMain);
-    g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
-    g.drawText ("FARTOVEN DRUMS", 16, 10, 400, 30, juce::Justification::left, false);
+    g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
+    g.drawText ("FARTOVEN DRUMS", 18, 10, 400, 26, juce::Justification::left, false);
 
-    drawBlock (g, blockToneArea,      "TONO");
+    g.setColour (FartovenStyle::textDim);
+    g.setFont (juce::FontOptions (11.0f));
+    g.drawText ("Procesador de bus para batería", 18, 30, 400, 16, juce::Justification::left, false);
+
+    drawBlock (g, blockToneArea,      channelTitle);
     drawBlock (g, blockTightArea,     "LIMPIEZA");
     drawBlock (g, blockBodyArea,      "CUERPO");
     drawBlock (g, blockCharacterArea, "CARÁCTER Y SALIDA");
@@ -288,12 +334,10 @@ void FartovenEditor::paint (juce::Graphics& g)
 void FartovenEditor::drawBlock (juce::Graphics& g, juce::Rectangle<int> area, const juce::String& title)
 {
     g.setColour (FartovenStyle::panel);
-    g.fillRoundedRectangle (area.toFloat(), 8.0f);
-    g.setColour (FartovenStyle::panelEdge);
-    g.drawRoundedRectangle (area.toFloat().reduced (0.5f), 8.0f, 1.0f);
+    g.fillRoundedRectangle (area.toFloat(), 12.0f);
 
-    g.setColour (FartovenStyle::accent);
-    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    g.setColour (FartovenStyle::textDim);
+    g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     g.drawText (title, area.withHeight (blockTitleHeight).reduced (12, 0), juce::Justification::left, false);
 }
 
@@ -339,7 +383,7 @@ void FartovenEditor::resized()
         }
     };
 
-    layoutKnobs (blockToneArea,  { &low, &mid, &high });
+    layoutKnobs (blockToneArea,  { &low, &mid, &high, &channelGain });
     layoutKnobs (blockTightArea, { &tight, &smooth });
     layoutKnobs (blockBodyArea,  { &punch, &threshold, &release, &parallel });
 

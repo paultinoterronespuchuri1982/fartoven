@@ -6,6 +6,7 @@
 #include <juce_dsp/juce_dsp.h>
 
 #include "../Source/DrumChannelDSP.h"
+#include "../Source/DrumChannel.h"
 
 namespace
 {
@@ -168,4 +169,137 @@ public:
     }
 };
 
+class DrumChannelTests : public juce::UnitTest
+{
+public:
+    DrumChannelTests() : juce::UnitTest ("DrumChannel", "DSP") {}
+
+    void runTest() override
+    {
+        using M = DrumChannel::SaturationMode;
+
+        beginTest ("Las curvas de saturación quedan en [-1, 1] con entradas extremas");
+        {
+            for (auto mode : { M::Cinta, M::Valvula, M::Metal })
+            {
+                for (float x = -50.0f; x <= 50.0f; x += 0.25f)
+                {
+                    const float y = DrumChannel::shape (x, mode);
+                    expect (std::isfinite (y), "Salida no finita");
+                    expect (y >= -1.0f && y <= 1.0f, "Salida fuera de [-1, 1]");
+                }
+            }
+        }
+
+        beginTest ("Válvula es asimétrica; Cinta es simétrica");
+        {
+            expect (std::abs (DrumChannel::shape (0.5f, M::Cinta) + DrumChannel::shape (-0.5f, M::Cinta)) < 1.0e-5f,
+                    "Cinta debe ser simétrica");
+            expect (std::abs (DrumChannel::shape (0.5f, M::Valvula) + DrumChannel::shape (-0.5f, M::Valvula)) > 1.0e-3f,
+                    "Válvula debe ser asimétrica");
+        }
+
+        beginTest ("Una voz procesa un impulso sin NaN y produce salida");
+        {
+            DrumChannel voice;
+            voice.prepare ({ 48000.0, (juce::uint32) 512, 2 });
+
+            DrumChannel::Params p;
+            p.drivePct = 50.0f;
+            p.saturation = M::Metal;
+            p.filterHz = 4000.0f;
+            voice.setParams (p);
+
+            juce::AudioBuffer<float> in (2, 512), out (2, 512);
+            in.clear();
+            out.clear();
+            in.setSample (0, 0, 0.5f);
+            in.setSample (1, 0, 0.5f);
+
+            voice.processAdd (in, out, 1.0f);
+
+            bool finite = true;
+            float peak = 0.0f;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 512; ++i)
+                {
+                    finite = finite && std::isfinite (out.getSample (ch, i));
+                    peak = juce::jmax (peak, std::abs (out.getSample (ch, i)));
+                }
+
+            expect (finite, "La voz produjo NaN o Inf");
+            expect (peak > 1.0e-4f, "La voz no produjo salida");
+            expect (peak <= 1.0f, "La voz superó 1.0");
+        }
+
+        beginTest ("Cambiar la EQ de un canal no altera a otro");
+        {
+            // Mismo audio de entrada para las dos ejecuciones. Solo cambia la EQ del canal A.
+            juce::AudioBuffer<float> input (2, 512);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    input.setSample (ch, i, std::sin (0.07f * (float) i) * 0.4f);
+
+            auto runB = [&input] (float aLowDb)
+            {
+                DrumChannel a, b;
+                a.prepare ({ 48000.0, (juce::uint32) 512, 2 });
+                b.prepare ({ 48000.0, (juce::uint32) 512, 2 });
+
+                DrumChannel::Params pa;
+                pa.lowDb = aLowDb;
+                a.setParams (pa);
+
+                juce::AudioBuffer<float> outA (2, 512), outB (2, 512);
+                outA.clear();
+                outB.clear();
+                a.processAdd (input, outA, 1.0f);
+                b.processAdd (input, outB, 1.0f);
+                return outB;
+            };
+
+            const auto outWithDefaultA = runB (0.0f);
+            const auto outWithBoostedA = runB (12.0f);
+
+            float maxDiff = 0.0f;
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < 512; ++i)
+                    maxDiff = juce::jmax (maxDiff, std::abs (outWithDefaultA.getSample (ch, i) - outWithBoostedA.getSample (ch, i)));
+
+            expect (maxDiff == 0.0f, "El canal B cambió al tocar la EQ del canal A");
+        }
+
+        beginTest ("Dos voces con parámetros distintos producen salidas distintas");
+        {
+            DrumChannel a, b;
+            a.prepare ({ 48000.0, (juce::uint32) 512, 2 });
+            b.prepare ({ 48000.0, (juce::uint32) 512, 2 });
+
+            DrumChannel::Params pa, pb;
+            pa.saturation = M::Cinta;
+            pb.saturation = M::Metal;
+            pa.drivePct = pb.drivePct = 80.0f;
+            a.setParams (pa);
+            b.setParams (pb);
+
+            juce::AudioBuffer<float> in (2, 512), outA (2, 512), outB (2, 512);
+            for (int i = 0; i < 512; ++i)
+                in.setSample (0, i, std::sin (0.05f * (float) i));
+            in.copyFrom (1, 0, in, 0, 0, 512);
+            outA.clear();
+            outB.clear();
+
+            a.processAdd (in, outA, 1.0f);
+            b.processAdd (in, outB, 1.0f);
+
+            float diff = 0.0f;
+            for (int i = 0; i < 512; ++i)
+                diff = juce::jmax (diff, std::abs (outA.getSample (0, i) - outB.getSample (0, i)));
+
+            expect (diff > 1.0e-3f, "Dos voces con distinta saturación deberían sonar distinto");
+        }
+    }
+};
+
 static DrumChannelDSPTests drumChannelDSPTests;
+static DrumChannelTests DrumChannelTests;

@@ -78,6 +78,50 @@ Las pruebas comprueban que el motor no produce NaN ni Inf, que el clipper mantie
 
 Los valores por defecto son un punto de partida. Ajusta por oído según la grabación.
 
+## Voces por instrumento
+
+Además del bus, FARTOVEN DRUMS tiene cinco voces: **Kick, Snare, Toms, Cymbals y Room**. Cada una tiene sus propios parámetros:
+
+| Parámetro | Rango | Qué hace |
+|---|---|---|
+| `kickLow`, `snareLow`, … | -12 a +12 dB | Banda de graves de la EQ del instrumento. |
+| `kickMid`, `snareMid`, … | -12 a +12 dB | Banda de medios de la EQ del instrumento. |
+| `kickHigh`, `snareHigh`, … | -12 a +12 dB | Banda de agudos de la EQ del instrumento. |
+| `kickGain`, `snareGain`, … | -12 a +12 dB | Ganancia de la voz. |
+| `kickDrive`, … | 0 a 100 % | Pre-ganancia antes de la saturación (de 1x a 10x). |
+| `kickSat`, … | Cinta, Válvula, Metal | Curva de saturación de la voz. |
+| `kickFilter`, … | 200 a 20 000 Hz | Paso bajo de la voz. A 20 kHz no filtra. |
+
+### Editar cada instrumento
+
+En la parte superior de la ventana hay un selector con **Kick, Snare, Toms, Cymbals y Room**. Elige uno y el bloque **CANAL** muestra su EQ (Low, Mid, High) y su Gain. Cada instrumento conserva su configuración aunque cambies de selección.
+
+El selector solo decide qué instrumento se edita en pantalla: no cambia el procesado. Mover un control de un instrumento no cambia el ecualizador de los demás.
+
+Las bandas de EQ tienen frecuencias de referencia propias para cada instrumento: graves, medios y agudos del bombo no son los mismos que los de los platos.
+
+### Curvas de saturación
+
+- **Cinta:** `y = tanh(1.2·x) / tanh(1.2)`. Curva suave y simétrica: redondea picos y añade calidez.
+- **Válvula:** para `x ≥ 0`, `y = 1 - exp(-1.5·x)`; para `x < 0`, `y = -0.8·(1 - exp(1.2·x))`. Asimétrica: el lado positivo satura antes, lo que añade armónicos pares.
+- **Metal:** `y = x / (1 + |x|)^0.75`, con recorte a [-1, 1]. Curva dura, con ataque agresivo y armónicos impares.
+
+Todas las salidas quedan en [-1, 1].
+
+### Cómo funciona la mezcla
+
+Cada voz procesa **la misma entrada** con su propio filtro, ganancia y saturación. Sus resultados se suman con un peso de 1/5 para que el nivel no se multiplique. Por eso, con el audio de un solo bus, las voces no separan los instrumentos: solo colorean la mezcla.
+
+Para tratar cada instrumento por separado en el DAW:
+
+1. Envía el bombo, la caja, los toms, los platos y el ambiente a sus propias pistas.
+2. Pon una instancia de FARTOVEN DRUMS en cada pista.
+3. En cada instancia, usa solo la voz que corresponde (por ejemplo, `kickGain` y `kickSat` en la pista del bombo) y pon el **Mode** adecuado.
+
+Si quieres procesar varios instrumentos en una sola instancia, tendrías que enrutar cada instrumento a una entrada sidechain separada, algo que el plugin no hace todavía.
+
+Importante: el DAW entrega un solo bus. Cada canal procesa una copia del mismo audio y el resultado se suma. Por eso, en una sola instancia, cambiar la EQ de un instrumento sí cambia la suma, pero no altera el procesado de los demás canales.
+
 ## Limitaciones conocidas
 
 - No es un synth: procesa el audio de entrada y no genera sonidos a partir de MIDI.
