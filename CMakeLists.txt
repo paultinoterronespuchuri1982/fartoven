@@ -35,6 +35,9 @@ juce_generate_juce_header(FartovenDrums)
 target_sources(FartovenDrums PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginProcessor.h
+    Source/PluginEditor.cpp
+    Source/PluginEditor.h
+    Source/DrumChannelDSP.h
 )
 
 target_link_libraries(FartovenDrums PRIVATE
@@ -47,3 +50,21 @@ target_link_libraries(FartovenDrums PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+
+# Pruebas del motor DSP: ejecutable de consola sin interfaz gráfica.
+juce_add_console_app(FartovenDrumsTests PRODUCT_NAME "FARTOVEN DRUMS Tests")
+
+target_sources(FartovenDrumsTests PRIVATE
+    Tests/main.cpp
+    Tests/DSPTests.cpp
+)
+
+target_link_libraries(FartovenDrumsTests PRIVATE
+    juce::juce_core
+    juce::juce_dsp
+    juce::juce_recommended_config_flags
+    juce::juce_recommended_warning_flags
+)
+
+enable_testing()
+add_test (NAME DrumChannelDSP COMMAND FartovenDrumsTests)
